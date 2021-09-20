@@ -1,4 +1,4 @@
-package function
+package archiver
 
 import (
 	"archive/tar"

@@ -1,1 +1,3 @@
-module "Archiver"
+module Archiver
+
+go 1.17

@@ -1,4 +1,4 @@
-package function
+package archiver
 
 import (
 	"archive/tar"
@@ -52,10 +52,6 @@ func (c *Compressor) Init(dest string) error {
 }
 
 func (c *Compressor) Close() error {
-	fErr := c.fw.Close()
-	if fErr != nil {
-		fmt.Println(fErr.Error())
-	}
 	gErr := c.gw.Close()
 	if gErr != nil {
 		fmt.Println(gErr.Error())
@@ -63,6 +59,10 @@ func (c *Compressor) Close() error {
 	tErr := c.tw.Close()
 	if tErr != nil {
 		fmt.Println(tErr.Error())
+	}
+	fErr := c.fw.Close()
+	if fErr != nil {
+		fmt.Println(fErr.Error())
 	}
 	if fErr != nil || gErr != nil || tErr != nil {
 		return fmt.Errorf("failed during closing writer")
@@ -113,7 +113,7 @@ func (c *Compressor) AddAllPredecessors() {
 func (c *Compressor) Archive() error {
 	for _, inclPth := range c.incl {
 		if err := c.addContentToTar(inclPth); err != nil {
-			fmt.Printf("error occured during archive: %s", err.Error())
+			fmt.Println("error occurred during archive")
 			return err
 		}
 	}
@@ -122,18 +122,29 @@ func (c *Compressor) Archive() error {
 
 func (c *Compressor) addContentToTar(incl PathInfo) error {
 	if !incl.isRec {
+		fmt.Println()
 		info, err := os.Lstat(incl.path)
 		if err != nil {
 			return err
 		}
+		if c.isOmittingPath(incl.path, info) {
+			fmt.Printf("path %s is omitting\n", incl.path)
+			return nil
+		}
 		return c.writePathInfo(incl.path, info)
 	} else {
 		return filepath.Walk(incl.path, func(path string, info fs.FileInfo, err error) error {
+			fmt.Println(path)
 			if err != nil {
 				fmt.Println(err.Error())
 				return nil
 			}
+			if c.isOmittingPath(path, info) {
+				fmt.Printf("path %s is omitting\n", path)
+				return nil
+			}
 			if err = c.writePathInfo(path, info); err != nil {
+				fmt.Println("error in writing path info")
 				return err
 			}
 			if !info.Mode().IsRegular() {
@@ -145,9 +156,6 @@ func (c *Compressor) addContentToTar(incl PathInfo) error {
 }
 
 func (c *Compressor) writePathInfo(path string, info fs.FileInfo) error {
-	if c.isOmittingPath(path, info) {
-		return nil
-	}
 	hdr, err := c.makeHeader(path, info)
 	if err != nil {
 		fmt.Println(err.Error())
@@ -163,7 +171,7 @@ func (c *Compressor) writePathInfo(path string, info fs.FileInfo) error {
 func (c *Compressor) writeRegularFileContent(path string) error {
 	fr, err := os.Open(path)
 	if err != nil {
-		fmt.Printf("cannot open file: %s", err.Error())
+		fmt.Printf("cannot open file: %s\n", err.Error())
 		return fmt.Errorf("cannot open file %s", path)
 	}
 	_, err = io.Copy(c.tw, fr)
@@ -178,17 +186,21 @@ func (c *Compressor) isOmittingPath(path string, info fs.FileInfo) bool {
 }
 
 func (c *Compressor) isExcluded(path string) bool {
+	fmt.Printf("checking path %s, current n: %d\n", path, c.n)
 	for c.n < len(c.excl) {
 		if strings.Compare(path, c.excl[c.n].path) < 0 {
+			fmt.Printf("path %s is not child \n", path)
 			return false
 		} else if strings.HasPrefix(path, c.excl[c.n].path) {
 			if isParDir(c.excl[c.n].path, path) {
 				return true
 			} else {
+				fmt.Println("n+1")
 				c.n++
 				continue
 			}
 		} else {
+			fmt.Println(":n+1")
 			c.n++
 		}
 	}
@@ -240,8 +252,9 @@ func removeChildPath(paths []string) (parPaths []string) {
 func isParDir(base, target string) bool {
 	relPath, err := filepath.Rel(base, target)
 	if err != nil {
-		fmt.Printf("cannot determine parent path: %s", err.Error())
+		fmt.Printf("cannot determine parent path: %s\n", err.Error())
 		return false
 	}
-	return strings.HasPrefix(relPath, "..")
+	fmt.Printf("%s path with target %s, relation: %s\n", base, target, relPath)
+	return !strings.HasPrefix(relPath, "..")
 }
